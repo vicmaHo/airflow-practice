@@ -17,7 +17,7 @@ default_args = {
 }
 
 # functions for tasks (it can be created outside the DAG, depending on your needs and conventions)
-def get_api():
+def _get_api():
     # the libreries must be inside the function, because each task is a different process executed by a different worker
     import requests
     url = "https://jsonplaceholder.typicode.com/posts/1"
@@ -26,8 +26,23 @@ def get_api():
     # save the response in a csv file
     with open('/tmp/sales_db_py.csv', 'wb') as f:
         f.write(response.content)
+        f.close()
     
+def _join_trans():
+    import pandas as pd
     
+    df_py = pd.read_csv('/tmp/sales_db_py.csv')
+    df_bash = pd.read_csv('/tmp/sales_db_bash.csv')
+    df = pd.concat([df_py, df_bash], ignore_index=True)
+    # group by 
+    df = df.groupby('id').sum(
+        numeric_only=True
+    )
+    
+    # rename columns
+
+    df.to_csv('/tmp/sales_db.csv', sep='\t', index=False, header=False)
+    print(df.head())
 
 with DAG(
     'ETL_PostgreSQL',
@@ -39,5 +54,15 @@ with DAG(
     
     get_api_python = PythonOperator(
         task_id='get_api_python',
-        python_callable=get_api
+        python_callable=_get_api
+    )
+    
+    get_api_bash = BashOperator(
+        task_id='get_api_bash',
+        bash_command='curl "https://jsonplaceholder.typicode.com/posts/1" > /tmp/sales_db_bash.csv'
+    )
+    
+    join_trans = PythonOperator(
+        task_id='join_trans',
+        python_callable=_join_trans
     )
